@@ -126,7 +126,7 @@ This project provides:
 
 ## 📝 Roadmap
 
-- [ ] Implement basic listener for `INSERT`, `UPDATE`, `DELETE`
+- [✅] Implement basic listener for `INSERT`, `UPDATE`, `DELETE`
 - [ ] Add webhook sender with HMAC signatures
 - [ ] Add structured logging (event + HTTP response)
 - [ ] Support retry/backoff for failed webhook calls

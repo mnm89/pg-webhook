@@ -37,8 +37,9 @@ services:
     ports:
       - "3000:3000"
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-db}
+      DATABASE_URL: postgres://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-db}?application_name=pg-webhook
       PUBLICATION_NAME: ${PUBLICATION_NAME:-pub}
+      SLOT_NAME: ${SLOT_NAME:-slot}
     depends_on:
       postgres:
         condition: service_healthy
