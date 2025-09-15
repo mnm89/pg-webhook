@@ -1,20 +1,20 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 import { Inject, Injectable } from '@nestjs/common';
 import { DbService } from '../db/db.service';
-import { CreateWebhookDto } from './dto/create';
-import { Webhook } from './webhooks.model';
+import { CreateHookDto } from './webhooks.dto';
 
 @Injectable()
 export class WebhooksService {
   @Inject()
   private readonly db: DbService;
 
-  async create(dto: CreateWebhookDto) {
+  async create(dto: CreateHookDto) {
     const query = `
       INSERT INTO webhooks (table_name, event_name, url, secret)
       VALUES ($1, $2, $3, $4)
       RETURNING *;
     `;
-    const rows = await this.db.query<Webhook>(query, [
+    const rows = await this.db.query(query, [
       dto.tableName,
       dto.eventName,
       dto.url,
@@ -23,7 +23,7 @@ export class WebhooksService {
     return rows[0];
   }
   async findAll() {
-    const rows = await this.db.query<Webhook>(
+    const rows = await this.db.query(
       `SELECT * FROM webhooks WHERE active = true ORDER BY created_at DESC;`,
     );
     return rows;
@@ -34,7 +34,7 @@ export class WebhooksService {
   }
 
   async findByTableAndEvent(table: string, event: string) {
-    const rows = await this.db.query<Webhook>(
+    const rows = await this.db.query(
       `SELECT * FROM webhooks WHERE table_name = $1 AND event_name = $2 AND active = true;`,
       [table, event],
     );

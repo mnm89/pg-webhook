@@ -1,7 +1,11 @@
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 import { IsIn, IsNotEmpty, IsString, IsUrl } from 'class-validator';
 
-export class CreateWebhookDto {
+export class CreateHookDto {
+  @IsString()
+  @IsNotEmpty()
+  schemaName: string;
+
   @IsString()
   @IsNotEmpty()
   tableName: string;
@@ -16,4 +20,15 @@ export class CreateWebhookDto {
   @IsString()
   @IsNotEmpty()
   secret: string;
+}
+
+export class GetHookDto {
+  id: number;
+  schemaName: string;
+  tableName: string;
+  eventName: 'INSERT' | 'UPDATE' | 'DELETE';
+  url: string;
+  secret: string;
+  active: boolean;
+  createdAt: Date;
 }

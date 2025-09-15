@@ -20,7 +20,7 @@ export class AppService implements OnModuleInit {
       this.ensurePublication(),
       this.ensureSlot(),
       this.ensureIdentityFull(),
-      this.ensureWebhooksTable(),
+      this.ensureWebhookSchema(),
     ]);
     this.replicationService.subscribe(async (msg) => {
       const webhooks = await this.webhooksService.findByTableAndEvent(
@@ -42,7 +42,7 @@ export class AppService implements OnModuleInit {
   }
 
   async ensurePublication() {
-    const pubName = this.configService.get<string>('PUBLICATION_NAME');
+    const pubName = this.configService.get<string>('PUBLICATION_NAME')!;
     const rows = await this.dbService.query(
       'SELECT 1 FROM pg_publication WHERE pubname = $1',
       [pubName],
@@ -57,7 +57,7 @@ export class AppService implements OnModuleInit {
     }
   }
   async ensureSlot() {
-    const slotName = this.configService.get<string>('SLOT_NAME');
+    const slotName = this.configService.get<string>('SLOT_NAME')!;
     const rows = await this.dbService.query(
       'SELECT 1 FROM pg_replication_slots WHERE slot_name = $1 AND plugin = $2',
       [slotName, 'pgoutput'],
@@ -72,7 +72,7 @@ export class AppService implements OnModuleInit {
     }
   }
   async ensureIdentityFull() {
-    const schemas: string[] = ['public'];
+    const schemas = this.configService.get<string[]>('SCHEMA_NAMES')!;
     await this.dbService.query(`
         -- ===========================================================
         -- Event trigger: set REPLICA IDENTITY FULL on new tables
@@ -120,10 +120,15 @@ export class AppService implements OnModuleInit {
       );
     }
   }
-  async ensureWebhooksTable() {
+  async ensureWebhookSchema() {
     await this.dbService.query(`
-      CREATE TABLE IF NOT EXISTS webhooks (
+      CREATE SCHEMA IF NOT EXISTS webhook;
+    `);
+
+    await this.dbService.query(`
+      CREATE TABLE IF NOT EXISTS webhook.hooks (
         id SERIAL PRIMARY KEY,
+        schema_name TEXT DEFAULT 'public',
         table_name TEXT NOT NULL,
         event_name TEXT NOT NULL CHECK (event_name IN ('INSERT', 'UPDATE', 'DELETE')),
         url TEXT NOT NULL,
@@ -131,6 +136,18 @@ export class AppService implements OnModuleInit {
         active BOOLEAN DEFAULT true,
         created_at TIMESTAMP DEFAULT now()
       );  
+    `);
+
+    await this.dbService.query(`
+      CREATE TABLE IF NOT EXISTS webhook.logs (
+        id BIGSERIAL PRIMARY KEY,
+        hook_id INT NOT NULL REFERENCES webhook.hooks(id) ON DELETE CASCADE,
+        status_code INT,
+        response_time_ms INT,
+        success BOOLEAN,
+        error TEXT,
+        created_at TIMESTAMP DEFAULT now()
+      );
     `);
   }
 }

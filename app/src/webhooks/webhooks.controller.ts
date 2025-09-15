@@ -7,8 +7,8 @@ import {
   Param,
   Post,
 } from '@nestjs/common';
-import { CreateWebhookDto } from './dto/create';
 import { WebhooksService } from './webhooks.service';
+import { CreateHookDto } from './webhooks.dto';
 
 @Controller('webhooks')
 export class WebhooksController {
@@ -16,7 +16,7 @@ export class WebhooksController {
   private readonly webhooksService: WebhooksService;
 
   @Post()
-  create(@Body() dto: CreateWebhookDto) {
+  create(@Body() dto: CreateHookDto) {
     return this.webhooksService.create(dto);
   }
 
