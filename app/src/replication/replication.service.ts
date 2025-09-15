@@ -51,19 +51,25 @@ export class ReplicationService implements OnModuleInit {
       protoVersion: 1,
       publicationNames: this.publicationNames,
     });
-
-    this.lrs.on('acknowledge', (lsn) => this.onAcknowledgement(lsn));
-    this.lrs.on('error', (error) => {
-      this.onSubscriptionError(error);
-      setTimeout(() => {
-        void this.subscribe(onMessage);
-      }, 5000);
-    });
-    this.lrs.on('heartbeat', (lsn, time, shouldRespond) =>
-      this.onHeartbeat(lsn, time, shouldRespond),
+    this.lrs.on('start', () =>
+      this.logger.debug(
+        `Listening to Postgres Publication "${this.publicationNames.join(',')}" ` +
+          `on Slot "${this.configService.get<string>('SLOT_NAME')}"`,
+      ),
     );
+    this.lrs.on('acknowledge', (lsn) =>
+      this.logger.verbose('Postgres confirmed WAL up to ' + lsn),
+    );
+    this.lrs.on('error', (error) => this.logger.error(error));
+    this.lrs.on('heartbeat', (lsn, time, shouldRespond) => {
+      this.logger.verbose(
+        `Heartbeat received at ${time} and should respond is: ${shouldRespond ? '✅' : '❌'}`,
+      );
+      if (shouldRespond) {
+        void this.lrs.acknowledge(lsn);
+      }
+    });
 
-    this.lrs.on('start', () => this.onSubscriptionStart());
     this.lrs.on('data', (lsn, msg: Pgoutput.Message) => {
       this.logger.debug('Reading WAL from ' + lsn);
       if (msg.tag === 'insert' || msg.tag === 'update' || msg.tag === 'delete')
@@ -71,35 +77,17 @@ export class ReplicationService implements OnModuleInit {
       void this.lrs.acknowledge(lsn);
     });
 
-    void this.lrs.subscribe(
-      plugin,
-      this.configService.get<string>('SLOT_NAME')!,
-    );
-  }
-  private onSubscriptionError(error: Error) {
-    this.logger.error(error);
-    this._lrs?.removeAllListeners();
-    this._lrs = undefined;
-  }
-  private onSubscriptionStart() {
-    this.logger.debug(
-      `Listening to Postgres Publication "${this.publicationNames.join(',')}" ` +
-        `on Slot "${this.configService.get<string>('SLOT_NAME')}"`,
-    );
+    void this.lrs
+      .subscribe(plugin, this.configService.get<string>('SLOT_NAME')!)
+      .catch(() => {
+        this._lrs?.removeAllListeners();
+        this._lrs = undefined;
+        setTimeout(() => {
+          void this.subscribe(onMessage);
+        }, 5000);
+      });
   }
 
-  private onAcknowledgement(lsn: string): void {
-    this.logger.verbose('Postgres confirmed WAL up to ' + lsn);
-  }
-
-  private onHeartbeat(lsn: string, time: number, shouldRespond: boolean) {
-    this.logger.verbose(
-      `Heartbeat received at ${time} and should respond is: ${shouldRespond ? '✅' : '❌'}`,
-    );
-    if (shouldRespond) {
-      void this.lrs.acknowledge(lsn);
-    }
-  }
   @Cron('1 * * * * *', {
     name: 'ensurePublicationsAndIdentityFull',
   })
