@@ -22,14 +22,26 @@ export class ReplicationService {
     return this._lrs;
   }
 
-  subscribe() {
+  subscribe(
+    onMessage: (
+      msg:
+        | Pgoutput.MessageInsert
+        | Pgoutput.MessageUpdate
+        | Pgoutput.MessageDelete,
+    ) => void | Promise<void>,
+  ) {
     const plugin = new PgoutputPlugin({
       protoVersion: 1,
       publicationNames: [this.configService.get<string>('PUBLICATION_NAME')!],
     });
 
     this.lrs.on('acknowledge', (lsn) => this.onAcknowledgement(lsn));
-    this.lrs.on('error', (error) => this.onSubscriptionError(error));
+    this.lrs.on('error', (error) => {
+      this.onSubscriptionError(error);
+      setTimeout(() => {
+        void this.subscribe(onMessage);
+      }, 5000);
+    });
     this.lrs.on('heartbeat', (lsn, time, shouldRespond) =>
       this.onHeartbeat(lsn, time, shouldRespond),
     );
@@ -37,7 +49,8 @@ export class ReplicationService {
     this.lrs.on('start', () => this.onSubscriptionStart());
     this.lrs.on('data', (lsn, msg: Pgoutput.Message) => {
       this.logger.debug('Reading WAL from ' + lsn);
-      this.onMessage(msg);
+      if (msg.tag === 'insert' || msg.tag === 'update' || msg.tag === 'delete')
+        void onMessage(msg);
       void this.lrs.acknowledge(lsn);
     });
 
@@ -50,9 +63,6 @@ export class ReplicationService {
     this.logger.error(error);
     this._lrs?.removeAllListeners();
     this._lrs = undefined;
-    setTimeout(() => {
-      void this.subscribe();
-    }, 5000);
   }
   private onSubscriptionStart() {
     this.logger.debug(
@@ -62,7 +72,7 @@ export class ReplicationService {
   }
 
   private onAcknowledgement(lsn: string): void {
-    this.logger.debug('Postgres confirmed WAL up to ' + lsn);
+    this.logger.verbose('Postgres confirmed WAL up to ' + lsn);
   }
 
   private onHeartbeat(lsn: string, time: number, shouldRespond: boolean) {
@@ -71,24 +81,6 @@ export class ReplicationService {
     );
     if (shouldRespond) {
       void this.lrs.acknowledge(lsn);
-    }
-  }
-
-  private onMessage(msg: Pgoutput.Message) {
-    if (msg.tag === 'insert') {
-      this.logger.log(
-        `Inserted into ${msg.relation.schema}.${msg.relation.name} ${JSON.stringify(msg.new)}`,
-      );
-    }
-    if (msg.tag === 'update') {
-      this.logger.log(
-        `Updated in ${msg.relation.schema}.${msg.relation.name} from ${JSON.stringify(msg.old)} to ${JSON.stringify(msg.new)}`,
-      );
-    }
-    if (msg.tag === 'delete') {
-      this.logger.log(
-        `Deleted from ${msg.relation.schema}.${msg.relation.name} ${JSON.stringify(msg.old)}`,
-      );
     }
   }
 }

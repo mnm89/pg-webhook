@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DbService } from './db/db.service';
 import { ReplicationService } from './replication/replication.service';
+import { WebhooksService } from './webhooks/webhooks.service';
 
 @Injectable()
 export class AppService implements OnModuleInit {
@@ -11,6 +12,8 @@ export class AppService implements OnModuleInit {
   private readonly dbService: DbService;
   @Inject()
   private readonly replicationService: ReplicationService;
+  @Inject()
+  private readonly webhooksService: WebhooksService;
   private readonly logger = new Logger(AppService.name);
   async onModuleInit() {
     await Promise.all([
@@ -19,7 +22,23 @@ export class AppService implements OnModuleInit {
       this.ensureIdentityFull(),
       this.ensureWebhooksTable(),
     ]);
-    this.replicationService.subscribe();
+    this.replicationService.subscribe(async (msg) => {
+      const webhooks = await this.webhooksService.findByTableAndEvent(
+        msg.relation.name,
+        msg.tag.toUpperCase(),
+      );
+      this.logger.debug(
+        JSON.stringify({
+          event: msg.tag,
+          table: msg.relation.name,
+          schema: msg.relation.schema,
+          new: 'new' in msg ? msg.new : null,
+          old: 'old' in msg ? msg.old : null,
+          key: 'key' in msg ? msg.key : null,
+          webhooks: webhooks.length,
+        }),
+      );
+    });
   }
 
   async ensurePublication() {
@@ -53,6 +72,7 @@ export class AppService implements OnModuleInit {
     }
   }
   async ensureIdentityFull() {
+    const schemas: string[] = ['public'];
     await this.dbService.query(`
         -- ===========================================================
         -- Event trigger: set REPLICA IDENTITY FULL on new tables
@@ -68,7 +88,10 @@ export class AppService implements OnModuleInit {
             FROM pg_event_trigger_ddl_commands()
             WHERE command_tag = 'CREATE TABLE'
           LOOP
+            -- Only apply to allowed schemas
+          IF (obj.tbl::text LIKE ANY(ARRAY[${schemas.map((s) => "'" + s + ".%'").join(',')}])) THEN
             EXECUTE format('ALTER TABLE %s REPLICA IDENTITY FULL', obj.tbl);
+          END IF;
           END LOOP;
         END;
         $$ LANGUAGE plpgsql;
@@ -81,28 +104,21 @@ export class AppService implements OnModuleInit {
         EXECUTE FUNCTION set_replica_identity_full();
       `);
 
-    await this.dbService.query(`
-        -- ===========================================================
-        -- Apply REPLICA IDENTITY FULL to all existing base tables
-        -- ===========================================================
-        DO $$
-        DECLARE
-          tbl record;
-        BEGIN
-          FOR tbl IN
-            SELECT table_schema, table_name
-            FROM information_schema.tables
-            WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
-              AND table_type = 'BASE TABLE'
-          LOOP
-            EXECUTE format(
-              'ALTER TABLE %I.%I REPLICA IDENTITY FULL',
-              tbl.table_schema, tbl.table_name
-            );
-          END LOOP;
-        END;
-        $$;
-      `);
+    const tables = await this.dbService.query<{
+      table_schema: string;
+      table_name: string;
+    }>(
+      `SELECT table_schema, table_name
+   FROM information_schema.tables
+   WHERE table_schema = ANY($1) AND table_type = 'BASE TABLE'`,
+      [schemas],
+    );
+
+    for (const tbl of tables) {
+      await this.dbService.query(
+        `ALTER TABLE ${tbl.table_schema}.${tbl.table_name} REPLICA IDENTITY FULL`,
+      );
+    }
   }
   async ensureWebhooksTable() {
     await this.dbService.query(`
