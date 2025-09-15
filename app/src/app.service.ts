@@ -1,104 +1,120 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import {
-  LogicalReplicationService,
-  Pgoutput,
-  PgoutputPlugin,
-} from 'pg-logical-replication';
-import { DbService } from './db.service';
 import { ConfigService } from '@nestjs/config';
+import { DbService } from './db/db.service';
+import { ReplicationService } from './replication/replication.service';
 
 @Injectable()
 export class AppService implements OnModuleInit {
   @Inject()
+  private readonly configService: ConfigService;
+  @Inject()
   private readonly dbService: DbService;
   @Inject()
-  private readonly configService: ConfigService;
+  private readonly replicationService: ReplicationService;
   private readonly logger = new Logger(AppService.name);
-
-  private _lrs?: LogicalReplicationService;
-  private get lrs() {
-    if (!this._lrs)
-      this._lrs = new LogicalReplicationService({
-        connectionString: this.configService.get<string>('DATABASE_URL'),
-        logger: this.logger,
-      });
-    return this._lrs;
-  }
-
   async onModuleInit() {
-    await this.dbService.ensurePublication();
-    await this.dbService.ensureSlot();
-    await this.dbService.ensureIdentityFull();
-    void this.subscribe();
+    await Promise.all([
+      this.ensurePublication(),
+      this.ensureSlot(),
+      this.ensureIdentityFull(),
+      this.ensureWebhooksTable(),
+    ]);
+    this.replicationService.subscribe();
   }
 
-  private onSubscriptionError(error: Error) {
-    this.logger.error(error);
-    this._lrs?.removeAllListeners();
-    this._lrs = undefined;
-    setTimeout(() => {
-      void this.subscribe();
-    }, 5000);
-  }
-  private onSubscriptionStart() {
-    this.logger.debug(
-      `Listening to Postgres Publication "${this.configService.get<string>('PUBLICATION_NAME')}" on Slot "${this.configService.get<string>('SLOT_NAME')}"`,
+  async ensurePublication() {
+    const pubName = this.configService.get<string>('PUBLICATION_NAME');
+    const rows = await this.dbService.query(
+      'SELECT 1 FROM pg_publication WHERE pubname = $1',
+      [pubName],
     );
-  }
-
-  private onAcknowledgement(lsn: string): void {
-    this.logger.debug('Postgres confirmed WAL up to ' + lsn);
-  }
-
-  private onHeartbeat(lsn: string, time: number, shouldRespond: boolean) {
-    this.logger.verbose(
-      `Heartbeat received at ${time} and should respond is: ${shouldRespond ? '✅' : '❌'}`,
-    );
-    if (shouldRespond) {
-      void this.lrs.acknowledge(lsn);
-    }
-  }
-
-  private onMessage(msg: Pgoutput.Message) {
-    if (msg.tag === 'insert') {
-      this.logger.log(
-        `Inserted into ${msg.relation.schema}.${msg.relation.name} ${JSON.stringify(msg.new)}`,
+    if (rows.length === 0) {
+      await this.dbService.query(
+        `CREATE PUBLICATION ${pubName} FOR ALL TABLES;`,
       );
-    }
-    if (msg.tag === 'update') {
-      this.logger.log(
-        `Updated in ${msg.relation.schema}.${msg.relation.name} from ${JSON.stringify(msg.old)} to ${JSON.stringify(msg.new)}`,
-      );
-    }
-    if (msg.tag === 'delete') {
-      this.logger.log(
-        `Deleted from ${msg.relation.schema}.${msg.relation.name} ${JSON.stringify(msg.old)}`,
-      );
+      this.logger.log(`📢 Publication "${pubName}" created`);
+    } else {
+      this.logger.log(`📢 Publication "${pubName}" already exists`);
     }
   }
-
-  private async subscribe() {
-    const plugin = new PgoutputPlugin({
-      protoVersion: 1,
-      publicationNames: [this.configService.get<string>('PUBLICATION_NAME')!],
-    });
-
-    this.lrs.on('acknowledge', (lsn) => this.onAcknowledgement(lsn));
-    this.lrs.on('error', (error) => this.onSubscriptionError(error));
-    this.lrs.on('heartbeat', (lsn, time, shouldRespond) =>
-      this.onHeartbeat(lsn, time, shouldRespond),
+  async ensureSlot() {
+    const slotName = this.configService.get<string>('SLOT_NAME');
+    const rows = await this.dbService.query(
+      'SELECT 1 FROM pg_replication_slots WHERE slot_name = $1 AND plugin = $2',
+      [slotName, 'pgoutput'],
     );
+    if (rows.length === 0) {
+      await this.dbService.query(
+        `SELECT * FROM pg_create_logical_replication_slot('${slotName}', 'pgoutput')`,
+      );
+      this.logger.log(`🎰 Slot "${slotName}" created`);
+    } else {
+      this.logger.log(`🎰 Slot "${slotName}" already exists`);
+    }
+  }
+  async ensureIdentityFull() {
+    await this.dbService.query(`
+        -- ===========================================================
+        -- Event trigger: set REPLICA IDENTITY FULL on new tables
+        -- ===========================================================
 
-    this.lrs.on('start', () => this.onSubscriptionStart());
-    this.lrs.on('data', (lsn, msg: Pgoutput.Message) => {
-      this.logger.debug('Processing WAL data from ' + lsn);
-      this.onMessage(msg);
-      void this.lrs.acknowledge(lsn);
-    });
+        CREATE OR REPLACE FUNCTION set_replica_identity_full()
+        RETURNS event_trigger AS $$
+        DECLARE
+          obj record;
+        BEGIN
+          FOR obj IN
+            SELECT objid::regclass AS tbl
+            FROM pg_event_trigger_ddl_commands()
+            WHERE command_tag = 'CREATE TABLE'
+          LOOP
+            EXECUTE format('ALTER TABLE %s REPLICA IDENTITY FULL', obj.tbl);
+          END LOOP;
+        END;
+        $$ LANGUAGE plpgsql;
 
-    await this.lrs.subscribe(
-      plugin,
-      this.configService.get<string>('SLOT_NAME')!,
-    );
+        DROP EVENT TRIGGER IF EXISTS replica_identity_default;
+
+        CREATE EVENT TRIGGER replica_identity_default
+        ON ddl_command_end
+        WHEN TAG IN ('CREATE TABLE')
+        EXECUTE FUNCTION set_replica_identity_full();
+      `);
+
+    await this.dbService.query(`
+        -- ===========================================================
+        -- Apply REPLICA IDENTITY FULL to all existing base tables
+        -- ===========================================================
+        DO $$
+        DECLARE
+          tbl record;
+        BEGIN
+          FOR tbl IN
+            SELECT table_schema, table_name
+            FROM information_schema.tables
+            WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+              AND table_type = 'BASE TABLE'
+          LOOP
+            EXECUTE format(
+              'ALTER TABLE %I.%I REPLICA IDENTITY FULL',
+              tbl.table_schema, tbl.table_name
+            );
+          END LOOP;
+        END;
+        $$;
+      `);
+  }
+  async ensureWebhooksTable() {
+    await this.dbService.query(`
+      CREATE TABLE IF NOT EXISTS webhooks (
+        id SERIAL PRIMARY KEY,
+        table_name TEXT NOT NULL,
+        event_name TEXT NOT NULL CHECK (event_name IN ('INSERT', 'UPDATE', 'DELETE')),
+        url TEXT NOT NULL,
+        secret TEXT NOT NULL,
+        active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT now()
+      );  
+    `);
   }
 }

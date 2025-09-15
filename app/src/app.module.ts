@@ -1,8 +1,9 @@
 import { Module } from '@nestjs/common';
-import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ConfigModule } from '@nestjs/config';
-import { DbService } from './db.service';
+import { WebhooksModule } from './webhooks/webhooks.module';
+import { DbModule } from './db/db.module';
+import { ReplicationModule } from './replication/replication.module';
 import * as Joi from 'joi';
 
 @Module({
@@ -16,8 +17,10 @@ import * as Joi from 'joi';
         PORT: Joi.number().default(3000),
       }),
     }),
+    WebhooksModule,
+    DbModule,
+    ReplicationModule,
   ],
-  controllers: [AppController],
-  providers: [AppService, DbService],
+  providers: [AppService],
 })
 export class AppModule {}
