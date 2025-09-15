@@ -5,8 +5,12 @@ import {
   Pgoutput,
   PgoutputPlugin,
 } from 'pg-logical-replication';
-import initReplication from './bootstrap';
+import initReplication, {
+  ensureIdentityFull,
+  ensurePublications,
+} from './bootstrap';
 import { DbService } from '../db/db.service';
+import { Cron } from '@nestjs/schedule';
 
 @Injectable()
 export class ReplicationService implements OnModuleInit {
@@ -95,5 +99,12 @@ export class ReplicationService implements OnModuleInit {
     if (shouldRespond) {
       void this.lrs.acknowledge(lsn);
     }
+  }
+  @Cron('1 * * * * *', {
+    name: 'ensurePublicationsAndIdentityFull',
+  })
+  async ensurePublicationsAndIdentityFull() {
+    await ensureIdentityFull(this.configService, this.dbService);
+    await ensurePublications(this.configService, this.dbService);
   }
 }

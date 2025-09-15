@@ -3,7 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import { DbService } from 'src/db/db.service';
 
 const logger = new Logger('ReplicationBootstrap');
-const ensurePublications = async (config: ConfigService, db: DbService) => {
+export const ensurePublications = async (
+  config: ConfigService,
+  db: DbService,
+) => {
   // Read schemas from config
   const schemas: string[] = config.get<string[]>('SCHEMA_NAMES')!;
   const publicationPrefix = config.get<string>('PUBLICATION_PREFIX');
@@ -81,7 +84,10 @@ const ensurePublications = async (config: ConfigService, db: DbService) => {
   }
 };
 
-const ensureIdentityFull = async (config: ConfigService, db: DbService) => {
+export const ensureIdentityFull = async (
+  config: ConfigService,
+  db: DbService,
+) => {
   const schemas = config.get<string[]>('SCHEMA_NAMES')!;
   const tables = await db.query<{
     table_schema: string;
