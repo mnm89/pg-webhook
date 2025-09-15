@@ -11,10 +11,26 @@ const SCHEMA_NAMES = Joi.string()
     }
     return arr;
   });
+
+const SLOT_NAME = Joi.string()
+  .pattern(/^[a-zA-Z_][a-zA-Z0-9_]{0,62}$/)
+  .required()
+  .messages({
+    'string.pattern.base':
+      'SLOT_NAME must start with a letter or underscore, and contain only letters, numbers, and underscores (max 63 chars)',
+  });
+
+const PUBLICATION_PREFIX = Joi.string()
+  .pattern(/^[a-zA-Z_][a-zA-Z0-9_]{0,62}$/)
+  .required()
+  .messages({
+    'string.pattern.base':
+      'PUBLICATION_PREFIX must start with a letter or underscore, and contain only letters, numbers, and underscores (max 63 chars)',
+  });
 export const validationSchema = Joi.object({
   DATABASE_URL: Joi.string().uri().required(),
   SCHEMA_NAMES,
-  PUBLICATION_NAME: Joi.string().required(),
-  SLOT_NAME: Joi.string().required(),
+  PUBLICATION_PREFIX,
+  SLOT_NAME,
   PORT: Joi.number().default(3000),
 });

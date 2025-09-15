@@ -1,20 +1,36 @@
-/* eslint-disable @typescript-eslint/no-unsafe-return */
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
 import { DbService } from '../db/db.service';
 import { CreateHookDto } from './webhooks.dto';
 
+import initWebhooks from './bootstrap';
+import { ConfigService } from '@nestjs/config';
+type Hook = {
+  id: number;
+  schema_name: string;
+  table_name: string;
+  event_name: 'INSERT' | 'UPDATE' | 'DELETE';
+  url: string;
+  secret: string;
+  active: boolean;
+  created_at: string;
+};
 @Injectable()
-export class WebhooksService {
+export class WebhooksService implements OnModuleInit {
   @Inject()
   private readonly db: DbService;
+  @Inject()
+  private readonly config: ConfigService;
+  async onModuleInit() {
+    await initWebhooks(this.config, this.db);
+  }
 
   async create(dto: CreateHookDto) {
     const query = `
-      INSERT INTO webhooks (table_name, event_name, url, secret)
+      INSERT INTO webhook.hooks (table_name, event_name, url, secret)
       VALUES ($1, $2, $3, $4)
       RETURNING *;
     `;
-    const rows = await this.db.query(query, [
+    const rows = await this.db.query<Hook>(query, [
       dto.tableName,
       dto.eventName,
       dto.url,
@@ -23,20 +39,20 @@ export class WebhooksService {
     return rows[0];
   }
   async findAll() {
-    const rows = await this.db.query(
-      `SELECT * FROM webhooks WHERE active = true ORDER BY created_at DESC;`,
+    const rows = await this.db.query<Hook>(
+      `SELECT * FROM webhook.hooks WHERE active = true ORDER BY created_at DESC;`,
     );
     return rows;
   }
   async remove(id: number) {
-    await this.db.query(`DELETE FROM webhooks WHERE id = $1;`, [id]);
+    await this.db.query(`DELETE FROM webhook.hooks WHERE id = $1;`, [id]);
     return { success: true };
   }
 
-  async findByTableAndEvent(table: string, event: string) {
-    const rows = await this.db.query(
-      `SELECT * FROM webhooks WHERE table_name = $1 AND event_name = $2 AND active = true;`,
-      [table, event],
+  async findByTableAndEvent(schema: string, table: string, event: string) {
+    const rows = await this.db.query<Hook>(
+      `SELECT * FROM webhook.hooks WHERE schema_name = $1 AND table_name = $2 AND event_name = $3 AND active = true;`,
+      [schema, table, event],
     );
     return rows;
   }

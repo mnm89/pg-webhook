@@ -1,15 +1,19 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   LogicalReplicationService,
   Pgoutput,
   PgoutputPlugin,
 } from 'pg-logical-replication';
+import initReplication from './bootstrap';
+import { DbService } from '../db/db.service';
 
 @Injectable()
-export class ReplicationService {
+export class ReplicationService implements OnModuleInit {
   @Inject()
   private readonly configService: ConfigService;
+  @Inject()
+  private readonly dbService: DbService;
   private readonly logger = new Logger(ReplicationService.name);
 
   private _lrs?: LogicalReplicationService;
@@ -21,7 +25,16 @@ export class ReplicationService {
       });
     return this._lrs;
   }
-
+  private get publicationNames() {
+    return this.configService
+      .get<string[]>('SCHEMA_NAMES')!
+      .map(
+        (s) => `${this.configService.get<string>('PUBLICATION_PREFIX')}_${s}`,
+      );
+  }
+  async onModuleInit() {
+    await initReplication(this.configService, this.dbService);
+  }
   subscribe(
     onMessage: (
       msg:
@@ -32,7 +45,7 @@ export class ReplicationService {
   ) {
     const plugin = new PgoutputPlugin({
       protoVersion: 1,
-      publicationNames: [this.configService.get<string>('PUBLICATION_NAME')!],
+      publicationNames: this.publicationNames,
     });
 
     this.lrs.on('acknowledge', (lsn) => this.onAcknowledgement(lsn));
@@ -66,7 +79,7 @@ export class ReplicationService {
   }
   private onSubscriptionStart() {
     this.logger.debug(
-      `Listening to Postgres Publication "${this.configService.get<string>('PUBLICATION_NAME')}" ` +
+      `Listening to Postgres Publication "${this.publicationNames.join(',')}" ` +
         `on Slot "${this.configService.get<string>('SLOT_NAME')}"`,
     );
   }

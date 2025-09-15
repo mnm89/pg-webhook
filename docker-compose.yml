@@ -38,7 +38,7 @@ services:
       - "3000:3000"
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-db}?application_name=pg-webhook
-      PUBLICATION_NAME: ${PUBLICATION_NAME:-pub}
+      PUBLICATION_PREFIX: ${PUBLICATION_PREFIX:-pub}
       SLOT_NAME: ${SLOT_NAME:-slot}
       SCHEMA_NAMES: ${SCHEMA_NAMES:-public}
     restart: on-failure

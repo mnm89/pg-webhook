@@ -20,11 +20,17 @@ export class DbService {
     return this._pool;
   }
 
-  // Optional helper to query the database
-  async query<T = any>(sql: string, params?: any[]): Promise<T[]> {
+  async query<T = any, R = T>(
+    sql: string,
+    params?: any[],
+    parser?: (row: T) => R,
+  ): Promise<R[]> {
     const client = await this.pool.connect();
     try {
       const res = await client.query<T>(sql, params);
+      if (parser) {
+        return res.rows.map(parser);
+      }
       return res.rows;
     } finally {
       client.release();
