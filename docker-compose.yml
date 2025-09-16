@@ -38,11 +38,12 @@ services:
       - "3000:3000"
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-db}?application_name=pg-webhook
-      PUBLICATION_PREFIX: ${PUBLICATION_PREFIX:-pub}
-      SLOT_NAME: ${SLOT_NAME:-slot}
+      PUBLICATION_PREFIX: ${PUBLICATION_PREFIX:-pg_webhook_pub}
+      SLOT_NAME: ${SLOT_NAME:-pg_webhook_slot}
       SCHEMA_NAMES: ${SCHEMA_NAMES:-public}
-      WEBHOOKS_API_KEY: ${WEBHOOKS_API_KEY:-secret}
-      LOG: ${LOG:-log,error,warn,fatal}
+      WEBHOOKS_API_KEY: ${WEBHOOKS_API_KEY:-pg_webhook_secret}
+      LOG_LEVELS: ${LOG_LEVELS:-log,error,warn,fatal}
+      LOG_JSON: ${LOG_JSON:-true}
       NODE_ENV: ${NODE_ENV:-production}
     restart: on-failure
     depends_on:

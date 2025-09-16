@@ -46,7 +46,7 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json /app/package-lock.json ./
 
 RUN npm i --omit dev
-ENV NODE_ENV production
+ENV NODE_ENV=production
 
 EXPOSE 3000
 CMD ["npm", "run", "start:prod"]
