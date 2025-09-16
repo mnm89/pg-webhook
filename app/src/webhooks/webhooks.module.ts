@@ -1,8 +1,9 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { WebhooksService } from './webhooks.service';
 import { WebhooksController } from './webhooks.controller';
 import { WebhookDispatcherService } from './webhooks.dispatcher';
 import { HttpModule } from '@nestjs/axios';
+import { HttpLoggerMiddleware } from './webhooks.middleware';
 
 @Module({
   imports: [HttpModule],
@@ -10,4 +11,8 @@ import { HttpModule } from '@nestjs/axios';
   controllers: [WebhooksController],
   exports: [WebhooksService, WebhookDispatcherService],
 })
-export class WebhooksModule {}
+export class WebhooksModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(HttpLoggerMiddleware).forRoutes(WebhooksController);
+  }
+}
