@@ -6,6 +6,7 @@ import { DbModule } from './db/db.module';
 import { ReplicationModule } from './replication/replication.module';
 import { validationSchema } from './config/validation.schema';
 import { ScheduleModule } from '@nestjs/schedule';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     DbModule,
     WebhooksModule,
     ReplicationModule,
+    HealthModule,
   ],
   providers: [AppService],
 })
