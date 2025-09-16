@@ -1,22 +1,12 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { ConsoleLogger, ValidationPipe } from '@nestjs/common';
+import { ConsoleLogger, Logger, ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+
+const logger = new Logger('NestApplication');
 
 NestFactory.create(AppModule, {
-  logger: new ConsoleLogger({
-    json: process.env.NODE_ENV === 'production',
-    prefix: 'pg-webhook',
-    logLevels: process.env.LOG
-      ? (process.env.LOG.split(',') as (
-          | 'log'
-          | 'error'
-          | 'warn'
-          | 'debug'
-          | 'verbose'
-          | 'fatal'
-        )[])
-      : ['log', 'error', 'warn', 'debug', 'verbose', 'fatal'],
-  }),
+  logger: false,
 })
   .then((app) => {
     app.useGlobalPipes(
@@ -27,9 +17,25 @@ NestFactory.create(AppModule, {
         transform: true,
       }),
     );
-    return app.listen(process.env.PORT ?? 3000);
+
+    app.useLogger(
+      new ConsoleLogger({
+        json: app.get(ConfigService).get<boolean>('LOG_JSON')!,
+        prefix: 'pg-webhook',
+        logLevels: app
+          .get(ConfigService)
+          .get<
+            ('verbose' | 'debug' | 'log' | 'warn' | 'error' | 'fatal')[]
+          >('LOG_LEVELS')!,
+      }),
+    );
+    return app
+      .listen(app.get(ConfigService).get<number>('PORT')!)
+      .then(() => app);
   })
-  .then(() =>
-    console.log('Server listening on port ' + (process.env.PORT ?? 3000)),
+  .then((app) =>
+    logger.log(
+      'Server listening on port ' + app.get(ConfigService).get('PORT'),
+    ),
   )
   .catch((e) => console.error('Server Starting Error', e));
