@@ -44,13 +44,13 @@ export class UpdateHookDto {
   eventName?: string;
 }
 
-export class GetHookDto {
+export type Hook = {
   id: number;
-  schemaName: string;
-  tableName: string;
-  eventName: 'INSERT' | 'UPDATE' | 'DELETE';
+  schema_name: string;
+  table_name: string;
+  event_name: 'INSERT' | 'UPDATE' | 'DELETE';
   url: string;
   secret: string;
   active: boolean;
-  createdAt: Date;
-}
+  created_at: string;
+};

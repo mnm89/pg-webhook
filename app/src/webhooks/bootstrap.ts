@@ -39,6 +39,9 @@ export default async function (config: ConfigService, db: DbService) {
         hook_id INT NOT NULL REFERENCES webhook.hooks(id) ON DELETE CASCADE,
         status_code INT,
         response_time_ms INT,
+        attempt_number INT DEFAULT 1,
+        request_payload JSONB,
+        response_body TEXT,
         success BOOLEAN,
         error TEXT,
         created_at TIMESTAMP DEFAULT now()

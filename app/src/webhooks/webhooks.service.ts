@@ -7,7 +7,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { DbService } from '../db/db.service';
-import { CreateHookDto, UpdateHookDto } from './webhooks.dto';
+import { CreateHookDto, UpdateHookDto, Hook } from './webhooks.dto';
 import initWebhooks from './bootstrap';
 import { ConfigService } from '@nestjs/config';
 
@@ -18,16 +18,6 @@ interface FindAllOptions {
   tableName?: string;
 }
 
-type Hook = {
-  id: number;
-  schema_name: string;
-  table_name: string;
-  event_name: 'INSERT' | 'UPDATE' | 'DELETE';
-  url: string;
-  secret: string;
-  active: boolean;
-  created_at: string;
-};
 @Injectable()
 export class WebhooksService implements OnModuleInit {
   @Inject()
