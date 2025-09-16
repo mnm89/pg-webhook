@@ -18,7 +18,21 @@ export default async function (config: ConfigService, db: DbService) {
         created_at TIMESTAMP DEFAULT now()
       );  
     `);
-
+  await db.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1
+          FROM pg_constraint
+          WHERE conname = 'hooks_unique_subscription'
+            AND conrelid = 'webhook.hooks'::regclass
+        ) THEN
+          ALTER TABLE webhook.hooks
+          ADD CONSTRAINT hooks_unique_subscription
+          UNIQUE (schema_name, table_name, event_name, url);
+        END IF;
+      END$$;
+`);
   await db.query(`
       CREATE TABLE IF NOT EXISTS webhook.logs (
         id BIGSERIAL PRIMARY KEY,

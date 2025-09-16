@@ -33,4 +33,5 @@ export const validationSchema = Joi.object({
   PUBLICATION_PREFIX,
   SLOT_NAME,
   PORT: Joi.number().default(3000),
+  WEBHOOKS_API_KEY: Joi.string().required(),
 });

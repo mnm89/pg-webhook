@@ -1,10 +1,10 @@
 /* eslint-disable @typescript-eslint/no-unsafe-call */
-import { IsIn, IsNotEmpty, IsString, IsUrl } from 'class-validator';
+import { IsIn, IsNotEmpty, IsOptional, IsString, IsUrl } from 'class-validator';
 
 export class CreateHookDto {
   @IsString()
-  @IsNotEmpty()
-  schemaName: string;
+  @IsOptional()
+  schemaName: string = 'public';
 
   @IsString()
   @IsNotEmpty()
@@ -20,6 +20,28 @@ export class CreateHookDto {
   @IsString()
   @IsNotEmpty()
   secret: string;
+}
+export class UpdateHookDto {
+  @IsString()
+  @IsOptional()
+  secret?: string;
+
+  @IsUrl()
+  @IsOptional()
+  url?: string;
+
+  @IsString()
+  @IsOptional()
+  schemaName?: string;
+
+  @IsString()
+  @IsOptional()
+  tableName?: string;
+
+  @IsString()
+  @IsIn(['INSERT', 'UPDATE', 'DELETE'])
+  @IsOptional()
+  eventName?: string;
 }
 
 export class GetHookDto {
