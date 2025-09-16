@@ -10,7 +10,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     command: >
       postgres -c wal_level=logical
                -c max_wal_senders=10
@@ -38,11 +38,16 @@ services:
       - "3000:3000"
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-db}?application_name=pg-webhook
-      PUBLICATION_NAME: ${PUBLICATION_NAME:-pub}
+      PUBLICATION_PREFIX: ${PUBLICATION_PREFIX:-pub}
       SLOT_NAME: ${SLOT_NAME:-slot}
+      SCHEMA_NAMES: ${SCHEMA_NAMES:-public}
+      WEBHOOKS_API_KEY: ${WEBHOOKS_API_KEY:-secret}
+      LOG: ${LOG:-log,error,warn,fatal}
+      NODE_ENV: ${NODE_ENV:-production}
+    restart: on-failure
     depends_on:
       postgres:
         condition: service_healthy
 
 volumes:
-  db_data:
+  postgres_data:
